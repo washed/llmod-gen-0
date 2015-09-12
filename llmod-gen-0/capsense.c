@@ -7,9 +7,58 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <stdlib.h>
+
 #include "capsense.h"
 #include "delay_mod.h"
-#include <stdlib.h>
+#include "time.h"
+
+capsense_state_TypeDef capsense;
+
+volatile uint8_t buttonState;
+volatile uint8_t lastButtonState = LOW;
+uint32_t lastDebounceTime = 0;
+uint32_t debounceDelay = 250;
+uint32_t button_reading;
+
+uint8_t debounce( capsense_state_TypeDef* capsense_handle )
+{
+	uint8_t output = 0;
+	int32_t capreading = 0;
+	uint32_t capreference = 5;
+		
+	capreading = capacitiveSensor( capsense_handle, 30 );
+	
+	if ( capreading >= capreference )
+	{
+		button_reading = HIGH;
+	}
+	else
+	{
+		button_reading = LOW;
+	}
+	
+	//TODO: Completely rework this horrible "debounce"-code!!!
+	if ((millis() - lastDebounceTime) > debounceDelay)
+	{
+		// whatever the reading is at, it's been there for longer
+		// than the debounce delay, so take it as the actual current state:
+
+		// if the button state has changed:
+		if (button_reading != buttonState)
+		{
+			buttonState = button_reading;
+
+			// only toggle the MODE if the new button state is HIGH
+			if (buttonState == HIGH)
+			{
+				output = 1;
+			}
+		}
+	}
+	lastButtonState = button_reading;
+	return output;
+}
 
 int32_t capacitiveSensor( capsense_state_TypeDef* capsense_handle, uint8_t samples )
 {
