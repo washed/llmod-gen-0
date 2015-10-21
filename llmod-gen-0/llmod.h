@@ -11,18 +11,22 @@
 
 #define F_CPU 8000000UL
 
-#define MAX_SPEED		0xFF
-#define MIN_SPEED		0x0
+#define MODE_SWITCH_TIME	250
+#define MAX_SPEED			0xFF
+#define MIN_SPEED			0x0
 
-#define NORMAL_SPEED	0x9B
+#define NORMAL_SPEED		0x9B
 
-#define MAX_MODES		6
-#define START_MODE		0
+#define MAX_MODES			5
+#define START_MODE			0
 
-#define TEMP_TIMER_RST	1000
+#define TEMP_TIMER_RST		1000
 
-#define PRNG_SEED_W		1
-#define PRNG_SEED_Z		2
+#define PRNG_SEED_W			1
+#define PRNG_SEED_Z			2
+
+#define PROB_NUMBERS_COUNT 256
+
 
 #ifdef ENABLE_MUSIC
 #define c 261
@@ -56,7 +60,6 @@ enum llmod_modes
 	MODE_IDLE			= 0,
 	MODE_NORMAL_FWD,
 	MODE_MAX_FWD,
-	MODE_NORMAL_REV,
 	MODE_RND_FWD,
 	MODE_RND_SNG_FWD,
 	MODE_RND_SNG_FWD_REV
@@ -78,13 +81,31 @@ struct llmod_state
 	llmod_direction		current_direction;
 	uint8_t				current_speed;
 	llmod_modes			last_mode;
-	
+	uint32_t			last_rnd_change_time;
+	uint32_t			event_timer;
+	uint32_t			m_w;
+	uint32_t			m_z;
 };
 
 
+typedef struct probabilityPairTypeDef probabilityPairTypeDef;
 
+struct probabilityPairTypeDef
+{
+
+	uint8_t probability;
+	uint8_t number;
+
+};
+
+extern probabilityPairTypeDef probabilityTable[PROB_NUMBERS_COUNT];
 extern llmod_state llmod;
 
+
+uint32_t get_random( llmod_state* llmod_handle );
+int32_t scale_and_offset( uint32_t scale, uint32_t offset, uint32_t input );
+uint8_t prng_is_seeded( llmod_state* llmod_handle );
+void seed_random( llmod_state* llmod_handle, uint32_t seed );
 void run_llmod_statemachine( llmod_state* llmod_handle );
 void init_llmod( llmod_state* llmod_handle );
 void set_motor_direction( llmod_direction direction );

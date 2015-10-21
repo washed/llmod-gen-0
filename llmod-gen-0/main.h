@@ -9,6 +9,8 @@
 #ifndef MAIN_H_
 #define MAIN_H_
 
+#define SENSE_INTERVAL	10
+
 void sys_init();
 
 #endif /* MAIN_H_ */

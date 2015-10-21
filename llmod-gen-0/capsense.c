@@ -15,49 +15,23 @@
 
 capsense_state_TypeDef capsense;
 
-volatile uint8_t buttonState;
-volatile uint8_t lastButtonState = LOW;
-uint32_t lastDebounceTime = 0;
-uint32_t debounceDelay = 250;
-uint32_t button_reading;
-
-uint8_t debounce( capsense_state_TypeDef* capsense_handle )
+uint8_t debounce_capsense()
 {
-	uint8_t output = 0;
-	int32_t capreading = 0;
-	uint32_t capreference = 5;
-		
-	capreading = capacitiveSensor( capsense_handle, 30 );
+	static uint16_t state = 0;
+	state = ( state << 1 ) | CapSensed() | 0xC000;
 	
-	if ( capreading >= capreference )
-	{
-		button_reading = HIGH;
-	}
+	if ( state == 0xFFFF)
+		 return 1;
 	else
-	{
-		button_reading = LOW;
-	}
-	
-	//TODO: Completely rework this horrible "debounce"-code!!!
-	if ((millis() - lastDebounceTime) > debounceDelay)
-	{
-		// whatever the reading is at, it's been there for longer
-		// than the debounce delay, so take it as the actual current state:
+		return 0;
+}
 
-		// if the button state has changed:
-		if (button_reading != buttonState)
-		{
-			buttonState = button_reading;
-
-			// only toggle the MODE if the new button state is HIGH
-			if (buttonState == HIGH)
-			{
-				output = 1;
-			}
-		}
-	}
-	lastButtonState = button_reading;
-	return output;
+uint8_t CapSensed()
+{
+	if ( capacitiveSensor( &capsense, DEFAULT_SAMPLES ) >= CAPSENSE_THRESHOLD )
+		return 1;
+	else
+		return 0;
 }
 
 int32_t capacitiveSensor( capsense_state_TypeDef* capsense_handle, uint8_t samples )
@@ -89,7 +63,7 @@ int32_t capacitiveSensorRaw( capsense_state_TypeDef* capsense_handle, uint8_t sa
 {
 	capsense_handle->total = 0;
 	if (samples == 0) return 0;
-	if (capsense_handle->error < 0) return -1;                  // bad pin - this appears not to work
+	//if (capsense_handle->error < 0) return -1;                  // bad pin - this appears not to work
 
 	for (uint8_t i = 0; i < samples; i++) {    // loop for samples parameter - simple lowpass filter
 		if (SenseOneCycle(capsense_handle) < 0)  return -2;   // variable over timeout
@@ -131,6 +105,11 @@ int32_t SenseOneCycle( capsense_state_TypeDef* capsense_handle )
 	uint32_t minIncrementDelay = 10; //µs
 	volatile uint32_t cycleTime = 0;
 	uint32_t cycleTotal = 0;
+	
+	//Debug
+	//PORTB |= (1<<PB3);
+	//
+	
 	cli();
 	PORTB &= ~(1<<PORTB1);
 	DDRB &= ~(1<<DDB2);
@@ -157,6 +136,10 @@ int32_t SenseOneCycle( capsense_state_TypeDef* capsense_handle )
 	//Add this cycles total time to the accumulated total:
 	capsense_handle->total += cycleTotal;
 
+	//Debug:
+	//PORTB &= ~(1<<PB3);
+	//
+	
 	cli();
 	PORTB |= (1<<PORTB2);
 	DDRB |= (1<<DDB2);

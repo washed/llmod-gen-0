@@ -22,6 +22,8 @@ TODO:
 -Update board shape to improve fit
 -Next generation?
 
+-REMEMBER: OSHPARK CANT HANDLE SMALL DISTANCES!!! BIGGER CLEARANCE!!!
+
 */
 
 #include <avr/io.h>
@@ -31,9 +33,22 @@ TODO:
 #include "capsense.h"
 #include "llmod.h"
 #include "time.h"
+#include "delay_mod.h"
 
-uint32_t lastModeSwitchTime = 0;
-uint32_t modeSwitchDelay = 250;
+//#define DEBUG_CAPSENSE_DEBOUNCE
+//#define DEBUG_CAPSENSE_COUNT
+
+#if (defined(DEBUG_CAPSENSE_DEBOUNCE) && defined (DEBUG_CAPSENSE_COUNT))
+#error "Only one of those capsense debug modes can be used at any time!"
+#endif
+
+#if (defined(DEBUG_CAPSENSE_DEBOUNCE) || defined (DEBUG_CAPSENSE_COUNT))
+#warning "Cap sense debugging is activated!"
+#endif
+
+uint32_t current_time = 0;
+uint32_t last_time_sense = 0;
+uint32_t last_time_switch = 0;
 
 int main(void)
 {
@@ -42,21 +57,90 @@ int main(void)
 	init_llmod( &llmod );
 	init_capsense( &capsense );
 
-    while(1)
-    {
-		if ( debounce( &capsense ) != 0 )
+#ifdef DEBUG_CAPSENSE_DEBOUNCE
+	uint32_t current_micros;
+	uint32_t delay1 = 50;
+	while (1)
+	{
+		current_time = millis();
+		if ( current_time - last_time_sense > SENSE_INTERVAL )
 		{
-			llmod.current_mode++;
-			if ( llmod.current_mode >= MAX_MODES )
-				llmod.current_mode = 0;
-		}
+			
+			last_time_sense = current_time;		
+			if ( debounce_capsense() == 1 )
+			{
+				//for ( uint32_t i = 0; i < cap_value; i++ )
+				{
+					current_micros = micros();
+					PORTB |= (1<<PB3);
+					while ( micros() - current_micros < delay1 );
+					
+					current_micros = micros();
+					PORTB &= ~(1<<PB3);
+					while ( micros() - current_micros < delay1 );
+				}
 
-		if ((millis() - lastModeSwitchTime) > modeSwitchDelay)
-		{
-			lastModeSwitchTime = millis();
-			run_llmod_statemachine( &llmod );
+			}
+			
 		}
 	}
+#elif defined(DEBUG_CAPSENSE_COUNT)
+	uint32_t cap_value;
+	while (1)
+	{
+		current_time = millis();
+		if ( current_time - last_time_sense > SENSE_INTERVAL )
+		{
+			
+			last_time_sense = current_time;
+			cap_value = capacitiveSensor( &capsense, DEFAULT_SAMPLES );
+			if ( cap_value >= 1 )
+			{
+				for ( uint32_t i = 0; i < cap_value; i++ )
+				{
+					current_micros = micros();
+					PORTB |= (1<<PB3);
+					while ( micros() - current_micros < delay1 );
+					
+					current_micros = micros();
+					PORTB &= ~(1<<PB3);
+					while ( micros() - current_micros < delay1 );
+				}
+
+			}
+			
+		}
+	}
+#else
+	while (1)
+	{
+		current_time = millis();
+		if ( (current_time - last_time_sense) > SENSE_INTERVAL )
+		{
+			last_time_sense = current_time;
+			if ( debounce_capsense() == 1 )
+			{
+				//Switch was pressed, has enough time passed to change the mode?
+				current_time = millis();
+				if (( current_time - last_time_switch) > MODE_SWITCH_TIME)
+				{
+					last_time_switch = current_time;
+					llmod.current_mode++;
+					if ( llmod.current_mode > MAX_MODES )
+						llmod.current_mode = 0;
+						
+					if ( (llmod.current_mode == MODE_RND_FWD) && (llmod.current_mode == MODE_RND_SNG_FWD) && (llmod.current_mode == MODE_RND_SNG_FWD_REV) )
+					{
+						//Seed the PRNG with the current system time:
+						seed_random( &llmod, millis() );
+					}
+					pulse_motor( llmod.current_mode, 100, 50 );
+				}
+			}
+		}
+		run_llmod_statemachine( &llmod );
+	}
+	#endif
 }
 
 void sys_init()
@@ -87,4 +171,3 @@ void sys_init()
 	TCCR0A = 3<<COM0A0 | 3<<WGM00;
 	TCCR0B = 0<<WGM02 | 2<<CS00;
 }
-
