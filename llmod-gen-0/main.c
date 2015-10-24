@@ -9,7 +9,7 @@
 /*
 TODO:
 
--Replace damaged motor control IC
+-Replace damaged motor control IC -> Solved, Pins were shorted to GND plane. See comment about OSHPark PCBs.
 -Verify touch button functionality and experiment with different laminated sensors
 -Ground connection for laminated touch sensors?
 -Add a source of randomness
