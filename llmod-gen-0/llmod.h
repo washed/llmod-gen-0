@@ -5,6 +5,7 @@
  *  Author: washed
  */ 
 
+#include "prng.h"
 
 #ifndef LLMOD_H_
 #define LLMOD_H_
@@ -20,12 +21,9 @@
 #define MAX_MODES			5
 #define START_MODE			0
 
+#define MAX_BIAS_TABLES		3
+
 #define TEMP_TIMER_RST		1000
-
-#define PRNG_SEED_W			1
-#define PRNG_SEED_Z			2
-
-#define PROB_NUMBERS_COUNT 256
 
 
 #ifdef ENABLE_MUSIC
@@ -52,7 +50,7 @@
 
 typedef enum llmod_modes llmod_modes;
 typedef enum llmod_direction llmod_direction;
-typedef struct llmod_state llmod_state;
+typedef struct llmodTypeDef llmodTypeDef;
 
 enum llmod_modes
 {
@@ -74,7 +72,7 @@ enum llmod_direction
 	
 };
 
-struct llmod_state
+struct llmodTypeDef
 {
 	
 	llmod_modes			current_mode;
@@ -83,31 +81,16 @@ struct llmod_state
 	llmod_modes			last_mode;
 	uint32_t			last_rnd_change_time;
 	uint32_t			event_timer;
-	uint32_t			m_w;
-	uint32_t			m_z;
-};
-
-
-typedef struct probabilityPairTypeDef probabilityPairTypeDef;
-
-struct probabilityPairTypeDef
-{
-
-	uint8_t probability;
-	uint8_t number;
+	prngTypeDef*		prng_handle;
+	biasTableTypeDef*	biasTables[MAX_BIAS_TABLES];
 
 };
 
-extern probabilityPairTypeDef probabilityTable[PROB_NUMBERS_COUNT];
-extern llmod_state llmod;
 
+extern llmodTypeDef llmod;
 
-uint32_t get_random( llmod_state* llmod_handle );
-int32_t scale_and_offset( uint32_t scale, uint32_t offset, uint32_t input );
-uint8_t prng_is_seeded( llmod_state* llmod_handle );
-void seed_random( llmod_state* llmod_handle, uint32_t seed );
-void run_llmod_statemachine( llmod_state* llmod_handle );
-void init_llmod( llmod_state* llmod_handle );
+void run_llmod_statemachine( llmodTypeDef* llmod_handle );
+void init_llmod( llmodTypeDef* llmod_handle );
 void set_motor_direction( llmod_direction direction );
 void set_motor_off();
 void set_motor_speed( uint8_t speed );

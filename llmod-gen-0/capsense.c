@@ -15,152 +15,152 @@
 
 capsense_state_TypeDef capsense;
 
-uint8_t debounce_capsense()
+void debounce_integrate( capsense_state_TypeDef* capsense_handle )
 {
-	static uint16_t state = 0;
-	state = ( state << 1 ) | CapSensed() | 0xC000;
-	
-	if ( state == 0xFFFF)
-		 return 1;
-	else
-		return 0;
-}
-
-uint8_t CapSensed()
-{
-	if ( capacitiveSensor( &capsense, DEFAULT_SAMPLES ) >= CAPSENSE_THRESHOLD )
-		return 1;
-	else
-		return 0;
-}
-
-int32_t capacitiveSensor( capsense_state_TypeDef* capsense_handle, uint8_t samples )
-{
-	capsense_handle->total = 0;
-	if (samples == 0) return 0;
-	if (capsense_handle->error < 0) return -1;            // bad pin
-
-	for (uint8_t i = 0; i < samples; i++)
-	{    // loop for samples parameter - simple lowpass filter
-		if (SenseOneCycle(capsense_handle) < 0)  return -2;   // variable over timeout
+	if (capsense_handle->capsense_raw == 0)
+	{
+		if (capsense_handle->integrator > 0)
+			capsense_handle->integrator--;
 	}
-
-		// only calibrate if time is greater than CS_AutocaL_Millis and total is less than 10% of baseline
-		// this is an attempt to keep from calibrating when the sensor is seeing a "touched" signal
-
-		if ( (millis() - capsense_handle->lastCal > capsense_handle->CS_Autocal_Millis) && abs(capsense_handle->total  - capsense_handle->leastTotal) < (int)(.10 * (float)capsense_handle->leastTotal) ) {
-
-			capsense_handle->leastTotal = 0x0FFFFFFFL;          // reset for "autocalibrate"
-			capsense_handle->lastCal = millis();
-		}
-
-	// routine to subtract baseline (non-sensed capacitance) from sensor return
-	if (capsense_handle->total < capsense_handle->leastTotal) capsense_handle->leastTotal = capsense_handle->total;                 // set floor value to subtract from sensed value
-	return(capsense_handle->total - capsense_handle->leastTotal);
-}
-
-int32_t capacitiveSensorRaw( capsense_state_TypeDef* capsense_handle, uint8_t samples )
-{
-	capsense_handle->total = 0;
-	if (samples == 0) return 0;
-	//if (capsense_handle->error < 0) return -1;                  // bad pin - this appears not to work
-
-	for (uint8_t i = 0; i < samples; i++) {    // loop for samples parameter - simple lowpass filter
-		if (SenseOneCycle(capsense_handle) < 0)  return -2;   // variable over timeout
+	else if (capsense_handle->integrator < MAXIMUM)
+		capsense_handle->integrator += 2;
+		
+	if (capsense_handle->integrator == 0)
+		capsense_handle->capsense_debounced = 0;
+	else if (capsense_handle->integrator >= MAXIMUM)
+	{
+		capsense_handle->capsense_debounced = 1;
+		capsense_handle->integrator = MAXIMUM;  /* defensive code if integrator got corrupted */
 	}
-
-	return capsense_handle->total;
-}
-
-void reset_CS_AutoCal( capsense_state_TypeDef* capsense_handle )
-{
-	capsense_handle->leastTotal = 0x0FFFFFFFL;
-}
-
-void set_CS_AutocaL_Millis( capsense_state_TypeDef* capsense_handle, uint32_t autoCal_millis )
-{
-	capsense_handle->CS_Autocal_Millis = autoCal_millis;
-}
-
-void set_CS_Timeout_Micros( capsense_state_TypeDef* capsense_handle, uint32_t timeout_micros)
-{
-	capsense_handle->CS_Timeout_Micros = timeout_micros;
 }
 
 void init_capsense( capsense_state_TypeDef* capsense_handle )
 {
 	//Init variables for capsense:
-	capsense_handle->error = 1;
-
-	capsense_handle->CS_Timeout_Micros = 300;
-	capsense_handle->CS_Autocal_Millis = 20000;
-		
-	capsense_handle->leastTotal = 0x0FFFFFFFL;
-	capsense_handle->lastCal = millis();
+	capsense_handle->chargedischarge_cycles = 50;
+	capsense_handle->sensecycle_state = 0;
+	capsense_handle->threshold = 0;
 }
 
-int32_t SenseOneCycle( capsense_state_TypeDef* capsense_handle )
+void sense_cycle( capsense_state_TypeDef* capsense_handle )
 {
-	volatile uint32_t lastIncrementTime = 0;
-	uint32_t minIncrementDelay = 10; //µs
-	volatile uint32_t cycleTime = 0;
-	uint32_t cycleTotal = 0;
 	
-	//Debug
-	//PORTB |= (1<<PB3);
-	//
-	
-	cli();
-	PORTB &= ~(1<<PORTB1);
-	DDRB &= ~(1<<DDB2);
-	DDRB |= (1<<DDB2);
-	PORTB &= ~(1<<PORTB2);
-	_delay_us(10);
-	DDRB &= ~(1<<DDB2);
-	PORTB |= (1<<PORTB1);
-	sei();
-	
-	while ( !(PINB & (1<<PINB2)) && ( cycleTotal < capsense_handle->CS_Timeout_Micros ) )
+	//cli();
+
+	//Start the loop:
+	for ( uint32_t i = 0; i < capsense_handle->chargedischarge_cycles; )
 	{
-		//Timestamp of the current measurement:
-		cycleTime = (millis()*1000 + micros());
-		
-		//Increment the value only if it is time to increment:
-		if ( (cycleTime - lastIncrementTime) >= minIncrementDelay )
-		{
-			cycleTotal += minIncrementDelay;
-			lastIncrementTime = cycleTime;
-		}
+		if (SenseOneCycle(capsense_handle))
+			i++;
 	}
-
-	//Add this cycles total time to the accumulated total:
-	capsense_handle->total += cycleTotal;
-
-	//Debug:
-	//PORTB &= ~(1<<PB3);
-	//
 	
-	cli();
-	PORTB |= (1<<PORTB2);
-	DDRB |= (1<<DDB2);
-	PORTB |= (1<<PORTB2);
-	DDRB &= ~(1<<DDB2);
-	PORTB &= ~(1<<PORTB1);
-	sei();
-
-	DDRB |= (1<<DDB2);
-	PORTB &= ~(1<<PORTB2);
-	_delay_us(10);
-	DDRB &= ~(1<<DDB2);
+	capsense_handle->completed_cycles++;
+	capsense_handle->calibration_sum += capsense_handle->sensed_pulsewidth;
+	capsense_handle->calibration = capsense_handle->calibration_sum / capsense_handle->completed_cycles;	
 	
-	_delay_us(100);
-
-	if (cycleTotal >= capsense_handle->CS_Timeout_Micros)
-	{
-		return -2;     // total variable over timeout
-	}
+	if ( capsense_handle->sensed_pulsewidth > capsense_handle->calibration )
+		capsense_handle->capsense_realcount = capsense_handle->sensed_pulsewidth - capsense_handle->calibration;
 	else
+		capsense_handle->capsense_realcount = 0;
+		
+	if ( capsense_handle->capsense_realcount > capsense_handle->threshold )
+		capsense_handle->capsense_raw = 1;
+	else
+		capsense_handle->capsense_raw = 0;
+
+	//Restart the measurement:
+	capsense_handle->sensecycle_state = CAPSENSE_PREPARE;
+	//sei();
+}
+
+uint8_t SenseOneCycle( capsense_state_TypeDef* capsense_handle )
+{
+	uint8_t rVal = 0;
+	switch (capsense_handle->sensecycle_state)
 	{
-		return 1;
+		case CAPSENSE_PREPARE:
+		{
+			//Reset counter
+			capsense_handle->sensed_pulsewidth = 0;
+			
+			//Tristate pulse pin:
+			DDRB &= ~(1<<DDB1);
+			PORTB &= ~(1<<PORTB1);
+			
+			//Tristate sense pin (input, no pull-up):
+			DDRB &= ~(1<<DDB2);
+			PORTB &= ~(1<<PORTB2);
+			
+			//Pulse pin as output low:
+			DDRB |= (1<<DDB1);
+			PORTB &= ~(1<<PORTB1);
+			
+			//Wait for it to discharge:
+			capsense_handle->sensecycle_state = CAPSENSE_CHARGE;
+			_delay_us(50);
+		}
+		break;
+		
+		case CAPSENSE_CHARGE:
+		{
+			//Set the pulse pin high:
+			PORTB |= (1<<PORTB1);
+			capsense_handle->sensecycle_state = CAPSENSE_WAITHIGH;
+			_delay_us(50);
+		}
+		break;
+		
+		case CAPSENSE_WAITHIGH:
+		{
+			//Wait for the sense pin to go high:
+			if ( (PINB & (1<<PINB2)) )
+			{
+				//Charge up completely, we need an intermediate step here (see ATTTiny85 datasheet section 10.2.3)
+				PORTB |= (1<<PORTB2);
+				DDRB |= (1<<DDB2);
+				PORTB |= (1<<PORTB2);
+				
+				//Tristate sense pin:
+				DDRB &= ~(1<<DDB2);
+				PORTB &= ~(1<<PORTB2);
+				
+				//Set the pulse pin low:
+				PORTB &= ~(1<<PORTB1);
+
+				capsense_handle->sensecycle_state = CAPSENSE_WAITLOW;
+				_delay_us(50);
+			}
+			else
+			{
+				capsense_handle->sensed_pulsewidth++;
+			}
+		}
+		break;
+		
+		case CAPSENSE_WAITLOW:
+		{
+			//Wait for the sense pin to go low:
+			if( !(PINB & (1<<PINB2)) )
+			{
+				//Discharge completely:
+				DDRB |= (1<<DDB2);
+				PORTB &= ~(1<<PORTB2);
+				
+				//Tristate sense pin:
+				 
+				DDRB &= ~(1<<DDB2);
+				PORTB &= ~(1<<PORTB2);
+				rVal = 1;
+				capsense_handle->sensecycle_state = CAPSENSE_CHARGE;
+				_delay_us(50);
+			}
+			else
+			{
+				capsense_handle->sensed_pulsewidth++;
+			}
+		}
+		break;
 	}
+	
+	return rVal;
 }

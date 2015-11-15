@@ -34,15 +34,17 @@ TODO:
 #include "llmod.h"
 #include "time.h"
 #include "delay_mod.h"
+#include "prng.h"
 
 //#define DEBUG_CAPSENSE_DEBOUNCE
 //#define DEBUG_CAPSENSE_COUNT
+#define DEBUG_CAPSENSE_RAW
 
-#if (defined(DEBUG_CAPSENSE_DEBOUNCE) && defined (DEBUG_CAPSENSE_COUNT))
+#if (defined(DEBUG_CAPSENSE_DEBOUNCE) && defined (DEBUG_CAPSENSE_COUNT) && defined(DEBUG_CAPSENSE_RAW))
 #error "Only one of those capsense debug modes can be used at any time!"
 #endif
 
-#if (defined(DEBUG_CAPSENSE_DEBOUNCE) || defined (DEBUG_CAPSENSE_COUNT))
+#if (defined(DEBUG_CAPSENSE_DEBOUNCE) || defined (DEBUG_CAPSENSE_COUNT) || defined(DEBUG_CAPSENSE_RAW))
 #warning "Cap sense debugging is activated!"
 #endif
 
@@ -54,63 +56,71 @@ int main(void)
 {
 	sys_init();
 
+	init_random( &prng1 );
 	init_llmod( &llmod );
-	init_capsense( &capsense );
+	init_capsense( &capsense );	
 
 #ifdef DEBUG_CAPSENSE_DEBOUNCE
 	uint32_t current_micros;
-	uint32_t delay1 = 50;
 	while (1)
 	{
+		sense_cycle( &capsense );
 		current_time = millis();
 		if ( current_time - last_time_sense > SENSE_INTERVAL )
 		{
-			
-			last_time_sense = current_time;		
-			if ( debounce_capsense() == 1 )
-			{
-				//for ( uint32_t i = 0; i < cap_value; i++ )
-				{
-					current_micros = micros();
-					PORTB |= (1<<PB3);
-					while ( micros() - current_micros < delay1 );
-					
-					current_micros = micros();
-					PORTB &= ~(1<<PB3);
-					while ( micros() - current_micros < delay1 );
-				}
-
-			}
-			
+			PORTB |= (1<<PB3);		
+			last_time_sense = current_time;
+			debounce_integrate( &capsense );
 		}
+		PORTB &= ~(1<<PB3);
+		if ( capsense.capsense_debounced == 0 )
+			PORTB &= ~(1<<PB3);
+		else
+			PORTB |= (1<<PB3);
 	}
+	
 #elif defined(DEBUG_CAPSENSE_COUNT)
-	uint32_t cap_value;
+	uint32_t current_micros;
 	while (1)
 	{
+		sense_cycle( &capsense );
 		current_time = millis();
 		if ( current_time - last_time_sense > SENSE_INTERVAL )
 		{
+			/*
+			PORTB |= (1<<PB3);
+			_delay_us(2);
+			PORTB &= ~(1<<PB3);
+			_delay_us(2);
+			*/
 			
 			last_time_sense = current_time;
-			cap_value = capacitiveSensor( &capsense, DEFAULT_SAMPLES );
-			if ( cap_value >= 1 )
-			{
-				for ( uint32_t i = 0; i < cap_value; i++ )
-				{
-					current_micros = micros();
-					PORTB |= (1<<PB3);
-					while ( micros() - current_micros < delay1 );
-					
-					current_micros = micros();
-					PORTB &= ~(1<<PB3);
-					while ( micros() - current_micros < delay1 );
-				}
 
+			for ( uint32_t i = 0; i < capsense.capsense_realcount; i++ )
+			{
+				PORTB &= ~(1<<PB3);
+				_delay_us(1);
+				PORTB |= (1<<PB3);
+				_delay_us(1);
 			}
-			
 		}
 	}
+#elif defined(DEBUG_CAPSENSE_RAW)
+while(1)
+{
+	//sense_cycle( &capsense );
+	
+				DDRB &= ~(1<<DDB2);
+				PORTB &= ~(1<<PORTB2);
+	DDRB &= ~(1<<DDB1);
+	PORTB &= ~(1<<PORTB1);
+	DDRB |= (1<<DDB1);
+	PORTB &= ~(1<<PORTB1);
+	PORTB |= (1<<PORTB1);
+	while(1);
+	
+	
+}
 #else
 	while (1)
 	{
@@ -120,6 +130,7 @@ int main(void)
 			last_time_sense = current_time;
 			if ( debounce_capsense() == 1 )
 			{
+				
 				//Switch was pressed, has enough time passed to change the mode?
 				current_time = millis();
 				if (( current_time - last_time_switch) > MODE_SWITCH_TIME)
@@ -132,10 +143,11 @@ int main(void)
 					if ( (llmod.current_mode == MODE_RND_FWD) && (llmod.current_mode == MODE_RND_SNG_FWD) && (llmod.current_mode == MODE_RND_SNG_FWD_REV) )
 					{
 						//Seed the PRNG with the current system time:
-						seed_random( &llmod, millis() );
+						seed_random( &prng1, millis() );
 					}
 					pulse_motor( llmod.current_mode, 100, 50 );
 				}
+				
 			}
 		}
 		run_llmod_statemachine( &llmod );

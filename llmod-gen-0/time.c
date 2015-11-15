@@ -8,12 +8,13 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include "time.h"
+#include "delay_mod.h"
 
 static volatile uint32_t milliseconds = 0;
 static volatile uint16_t microseconds = 0;
 
 ISR(TIMER1_COMPA_vect)
-{
+{				
 	microseconds += 10;
 	if ( microseconds == 1000 )
 	{

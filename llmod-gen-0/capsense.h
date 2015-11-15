@@ -19,30 +19,39 @@
 #define CAPSENSE_THRESHOLD		15
 #define DEFAULT_SAMPLES			5
 
+#define DEBOUNCE_TIME		0.3
+#define SAMPLE_FREQUENCY	100
+#define DROPBACK			0
+#define MAXIMUM				2*(DEBOUNCE_TIME * SAMPLE_FREQUENCY)
+
 typedef struct capsense_state_TypeDef capsense_state_TypeDef;
 typedef struct Debouncer_TypeDef Debouncer_TypeDef;
+typedef enum capsense_sensecycle_stateENUM capsense_sensecycle_stateENUM;
 
+enum capsense_sensecycle_stateENUM
+{
+	CAPSENSE_PREPARE = 0,
+	CAPSENSE_CHARGE,
+	CAPSENSE_WAITHIGH,
+	CAPSENSE_WAITLOW
+};
 struct capsense_state_TypeDef
 {
-	int8_t		error;
-	uint32_t	leastTotal;
-	uint32_t	CS_Timeout_Micros;
-	uint32_t	CS_Autocal_Millis;
-	uint32_t	lastCal;
-	uint32_t	total;
-	
+	uint32_t						threshold;
+	uint32_t						capsense_realcount;
+	uint8_t							capsense_raw;
+	uint8_t							capsense_debounced;
+	uint32_t						integrator;
+	uint32_t						chargedischarge_cycles;
+	uint32_t						sensed_pulsewidth;
+	uint32_t						calibration;
+	uint32_t						completed_cycles;
+	uint32_t						calibration_sum;
+	capsense_sensecycle_stateENUM	sensecycle_state;
 };
 
 extern capsense_state_TypeDef capsense;
 
-uint8_t CapSensed();
-uint8_t debounce_capsense();
-int32_t capacitiveSensor( capsense_state_TypeDef* capsense_handle, uint8_t samples );
-int32_t capacitiveSensorRaw( capsense_state_TypeDef* capsense_handle, uint8_t samples );
-void reset_CS_AutoCal( capsense_state_TypeDef* capsense_handle );
-void set_CS_AutocaL_Millis(  capsense_state_TypeDef* capsense_handle, uint32_t autoCal_millis );
-void set_CS_Timeout_Micros( capsense_state_TypeDef* capsense_handle, uint32_t timeout_millis);
-void init_capsense();
-int32_t SenseOneCycle( capsense_state_TypeDef* capsense_handle );
+uint8_t SenseOneCycle( capsense_state_TypeDef* capsense_handle );
 
 #endif /* CAPSENSE_H_ */
